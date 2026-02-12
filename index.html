@@ -418,5 +418,37 @@
 
         createSVGFrame();
     </script>
+
+    <!-- ========================================== -->
+<!--       CONEXIÓN A SUPABASE (CONTADOR)       -->
+<!-- ========================================== -->
+
+<!-- 1. Cargar librería de Supabase desde internet -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script>
+    // 2. CONFIGURACIÓN (Pega aquí tus datos de Supabase)
+    const supabaseUrl = 'https://cgpioodxsryqfyofjfvy.supabase.co'; 
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNncGlvb2R4c3J5cWZ5b2ZqZnZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc3MTY2MjIsImV4cCI6MjA2MzI5MjYyMn0.TB8MmMzMc18hktGiWal_Fjmuq4ptqp7pz3mi0o8LJLY';
+    
+    // 3. Inicializar cliente
+    const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+
+    // 4. Función para contar la visita
+    async function registrarVisita() {
+        // Llamamos a la función SQL que creamos "sumar_visita"
+        const { data, error } = await _supabase.rpc('sumar_visita');
+        
+        if (error) {
+            console.error('Error registrando visita:', error);
+        } else {
+            console.log('¡Visita registrada en Supabase!');
+        }
+    }
+
+    // Ejecutar apenas cargue la página
+    registrarVisita();
+
+</script>
 </body>
 </html>
