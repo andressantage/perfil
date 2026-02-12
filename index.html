@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Generador de Campaña</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f6f8;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 15px; /* Menos padding para moviles */
+            color: #333;
+            margin: 0;
+            overscroll-behavior: none;
+        }
+
+        h2 { 
+            color: #482a83; 
+            margin-bottom: 10px; 
+            text-align: center;
+            font-size: 1.5rem;
+        }
+
+        .editor-container {
+            background: white;
+            padding: 20px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            max-width: 500px;
+            width: 100%;
+            box-sizing: border-box; /* Importante para que el padding no rompa el ancho */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* --- RESPONSIVE CANVAS --- */
+        .canvas-wrapper {
+            position: relative;
+            margin: 20px 0;
+            border-radius: 50%;
+            overflow: hidden;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            cursor: grab;
+            
+            /* Esto hace que funcione perfecto en celular */
+            width: 100%; 
+            max-width: 400px; 
+            aspect-ratio: 1 / 1; /* Mantiene el cuadrado perfecto siempre */
+            height: auto;
+            
+            border: 4px solid #fff;
+            background-color: #ddd;
+            touch-action: none; /* Evita que el navegador haga scroll al tocar el canvas */
+        }
+        .canvas-wrapper:active { cursor: grabbing; }
+
+        canvas { 
+            display: block; 
+            width: 100%; 
+            height: 100%; 
+        }
+
+        .controls { width: 100%; display: flex; flex-direction: column; gap: 15px; }
+
+        .control-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f9f9f9;
+            padding: 12px;
+            border-radius: 8px;
+        }
+        
+        label { 
+            font-weight: 700; 
+            font-size: 0.9em; 
+            color: #482a83; 
+            text-transform: uppercase; 
+            white-space: nowrap;
+        }
+
+        input[type="range"] { 
+            flex-grow: 1; 
+            margin-left: 15px; 
+            cursor: pointer; 
+            accent-color: #482a83;
+            height: 25px; /* Más fácil de tocar en movil */
+        }
+
+        .file-btn {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            text-align: center;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-bottom: 5px;
+            border: 2px dashed #482a83;
+            background: white;
+            color: #482a83;
+            transition: 0.3s;
+            position: relative;
+            box-sizing: border-box;
+        }
+        
+        .file-btn:active { background: #f0f0f0; }
+        
+        .file-btn input {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        button#downloadBtn {
+            background-color: #482a83;
+            color: white;
+            border: none;
+            padding: 18px; /* Botón grande para dedos */
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 10px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+            box-shadow: 0 4px 10px rgba(72, 42, 131, 0.3);
+            -webkit-tap-highlight-color: transparent;
+        }
+        button#downloadBtn:hover { background-color: #351e60; }
+        button#downloadBtn:disabled { background-color: #ccc; cursor: not-allowed; box-shadow: none; }
+
+    </style>
+</head>
+<body>
+
+    <h2>Foto de Campaña</h2>
+
+    <div class="editor-container">
+        
+        <div class="controls">
+            <div class="file-btn">
+                <span>📷 TOCAR PARA SUBIR FOTO</span>
+                <input type="file" id="uploadInput" accept="image/*">
+            </div>
+        </div>
+
+        <div class="canvas-wrapper">
+            <canvas id="mainCanvas" width="800" height="800"></canvas>
+        </div>
+
+        <div class="controls">
+            <div class="control-row">
+                <label>Tamaño Foto</label>
+                <!-- Modificado: min="0.1" para reducir mucho más la imagen -->
+                <input type="range" id="photoScale" min="0.1" max="3" step="0.05" value="1" disabled>
+            </div>
+
+            <button id="downloadBtn" disabled>DESCARGAR IMAGEN</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+        const uploadInput = document.getElementById('uploadInput');
+        const photoScaleSlider = document.getElementById('photoScale');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        // === CONFIGURACIÓN ===
+        const config = {
+            mainColor: "#482a83", 
+            accentColor: "#f7931e", 
+            textColor: "#FFFFFF",
+            
+            topText: "YO ME UNO",
+            // Separamos el texto de abajo para pintarlo diferente
+            bottomTextPart1: "A LA",        // Blanco
+            bottomTextPart2: " NUEVA MAYORÍA", // Naranja (nota el espacio al inicio)
+            
+            canvasSize: 800,
+            pathRadius: 340,  
+            strokeWidth: 90,  
+            fontSize: 55      
+        };
+
+        let userImage = null;
+        let frameImage = new Image();
+        let stickerImage = new Image();
+        
+        let photoState = { x: 0, y: 0, scale: 1 };
+        
+        // Carga la imagen local s.png
+        stickerImage.src = "s.png"; 
+        
+        // STICKER CONFIG: Tamaño y posición fijos
+        let stickerState = { 
+            x: config.canvasSize / 2, 
+            y: config.canvasSize - 280, 
+            scale: 1.7, // Tamaño fijo del sticker (1.0 = tamaño original de la imagen, súbelo si s.png es muy chica)
+            width: 0,
+            height: 0
+        };
+
+        let isDraggingPhoto = false;
+        let isDraggingSticker = false;
+        let startDragX, startDragY;
+
+        function createSVGFrame() {
+            const size = config.canvasSize;
+            const cx = size / 2;
+            const cy = size / 2;
+            const r = config.pathRadius;
+
+            // Aquí usamos <tspan> para cambiar el color de las palabras específicas
+            const svgString = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+                <defs>
+                    <path id="topCurve" d="M ${cx-r},${cy} A ${r},${r} 0 1,1 ${cx+r},${cy}" />
+                    <path id="bottomCurve" d="M ${cx-r},${cy} A ${r},${r} 0 0,0 ${cx+r},${cy}" />
+                </defs>
+                
+                <circle cx="${cx}" cy="${cy}" r="${r}" stroke="${config.mainColor}" stroke-width="${config.strokeWidth}" fill="none" />
+                
+                <!-- Texto Superior (Todo Blanco) -->
+                <text fill="${config.textColor}" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="${config.fontSize}" dy="5">
+                    <textPath href="#topCurve" startOffset="50%" text-anchor="middle" dominant-baseline="middle">
+                        ${config.topText}
+                    </textPath>
+                </text>
+
+                <!-- Texto Inferior (Blanco + Naranja) -->
+                <text font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="${config.fontSize}" dy="5">
+                    <textPath href="#bottomCurve" startOffset="50%" text-anchor="middle" dominant-baseline="middle">
+                        <tspan fill="${config.textColor}">${config.bottomTextPart1}</tspan><tspan fill="${config.accentColor}">${config.bottomTextPart2}</tspan>
+                    </textPath>
+                </text>
+            </svg>
+            `;
+            
+            const blob = new Blob([svgString], {type: 'image/svg+xml'});
+            const url = URL.createObjectURL(blob);
+            frameImage.src = url;
+            frameImage.onload = () => draw();
+        }
+
+        uploadInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    userImage = new Image();
+                    userImage.onload = () => {
+                        // Resetear posición y zoom al cargar nueva imagen
+                        photoState = { x: 0, y: 0, scale: 1 };
+                        photoScaleSlider.value = 1;
+                        photoScaleSlider.disabled = false;
+                        downloadBtn.disabled = false;
+                        draw();
+                    };
+                    userImage.src = event.target.result;
+                };
+                reader.readAsDataURL(e.target.files[0]);
+            }
+        });
+
+        // Aseguramos que el sticker se dibuje al cargar la página
+        stickerImage.onload = () => draw();
+        stickerImage.onerror = () => console.log("Aviso: No se encuentra s.png");
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = "white";
+            ctx.fillRect(0,0, canvas.width, canvas.height);
+
+            // 1. DIBUJAR FOTO USUARIO
+            if (userImage) {
+                ctx.save();
+                ctx.beginPath();
+                const innerR = config.pathRadius - (config.strokeWidth / 2) + 1; 
+                ctx.arc(config.canvasSize/2, config.canvasSize/2, innerR, 0, Math.PI * 2);
+                ctx.clip();
+
+                const imgW = userImage.width * photoState.scale;
+                const imgH = userImage.height * photoState.scale;
+                const x = (canvas.width - imgW) / 2 + photoState.x;
+                const y = (canvas.height - imgH) / 2 + photoState.y;
+
+                ctx.drawImage(userImage, x, y, imgW, imgH);
+                ctx.restore();
+            } else {
+                // Placeholder
+                ctx.fillStyle = "#eee";
+                ctx.beginPath();
+                ctx.arc(400, 400, 240, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = "#999";
+                ctx.font = "bold 30px Arial";
+                ctx.textAlign = "center";
+                ctx.fillText("Sube tu foto", 400, 400);
+            }
+
+            // 2. DIBUJAR MARCO
+            if (frameImage.complete) {
+                ctx.drawImage(frameImage, 0, 0, canvas.width, canvas.height);
+            }
+
+            // 3. DIBUJAR STICKER
+            if (stickerImage.complete && stickerImage.width > 0) {
+                const sW = stickerImage.width;
+                const sH = stickerImage.height;
+                const aspect = sW / sH;
+                
+                // Tamaño calculado basado en la escala fija definida arriba
+                const baseSize = 220 * stickerState.scale;
+                stickerState.width = baseSize;
+                stickerState.height = baseSize / aspect;
+
+                ctx.drawImage(stickerImage, 
+                    stickerState.x - (stickerState.width/2), 
+                    stickerState.y - (stickerState.height/2), 
+                    stickerState.width, 
+                    stickerState.height
+                );
+            }
+        }
+
+        // --- CONTROLES Y EVENTOS ---
+
+        photoScaleSlider.addEventListener('input', (e) => {
+            photoState.scale = parseFloat(e.target.value);
+            draw();
+        });
+
+        // Función para calcular posición correcta en movil y escritorio
+        function getPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            // Factores de escala entre el tamaño visual (CSS) y real (Canvas 800px)
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            
+            let clientX, clientY;
+            
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+            
+            return {
+                x: (clientX - rect.left) * scaleX,
+                y: (clientY - rect.top) * scaleY
+            };
+        }
+
+        function startDrag(e) {
+            const pos = getPos(e);
+            
+            // Detectar click en Sticker
+            const dx = pos.x - stickerState.x;
+            const dy = pos.y - stickerState.y;
+            const stickerRadius = Math.max(stickerState.width, stickerState.height) / 1.5;
+
+            if (userImage) {
+                isDraggingPhoto = true;
+                startDragX = pos.x - photoState.x;
+                startDragY = pos.y - photoState.y;
+            }
+        }
+
+        function dragging(e) {
+            if (!isDraggingPhoto && !isDraggingSticker) return;
+            e.preventDefault(); // IMPORTANTE: Evita que el celular haga scroll mientras acomodas la foto
+            
+            const pos = getPos(e);
+
+            if (isDraggingSticker) {
+                stickerState.x = pos.x - startDragX;
+                stickerState.y = pos.y - startDragY;
+            } else if (isDraggingPhoto) {
+                photoState.x = pos.x - startDragX;
+                photoState.y = pos.y - startDragY;
+            }
+            draw();
+        }
+
+        function endDrag() {
+            isDraggingPhoto = false;
+            isDraggingSticker = false;
+        }
+
+        // Eventos Mouse (PC)
+        canvas.addEventListener('mousedown', startDrag);
+        window.addEventListener('mousemove', dragging);
+        window.addEventListener('mouseup', endDrag);
+        
+        // Eventos Touch (Móvil)
+        // passive: false es crucial para que e.preventDefault() funcione y no haga scroll
+        canvas.addEventListener('touchstart', startDrag, {passive: false});
+        window.addEventListener('touchmove', dragging, {passive: false});
+        window.addEventListener('touchend', endDrag);
+
+        downloadBtn.addEventListener('click', () => {
+            try {
+                const link = document.createElement('a');
+                link.download = 'adelante_con_fajardo.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            } catch(err) {
+                alert("Error de seguridad: Recuerda subir el archivo 'index.html' y 's.png' a un servidor o carpeta web.");
+            }
+        });
+
+        createSVGFrame();
+    </script>
+</body>
+</html>
